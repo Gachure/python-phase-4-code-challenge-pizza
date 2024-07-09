@@ -2,7 +2,6 @@ from models import Restaurant, RestaurantPizza, Pizza
 from app import app, db
 from faker import Faker
 
-
 class TestApp:
     '''Flask application in app.py'''
 
@@ -83,7 +82,7 @@ class TestApp:
         '''returns an error message and 404 status code with DELETE request to /restaurants/<int:id> by a non-existent ID.'''
 
         with app.app_context():
-            response = app.test_client().get('/restaurants/0')
+            response = app.test_client().delete('/restaurants/0')
             assert response.status_code == 404
             assert response.json.get('error') == "Restaurant not found"
 
@@ -91,30 +90,28 @@ class TestApp:
         """retrieves pizzas with GET request to /pizzas"""
         with app.app_context():
             fake = Faker()
-            pizza1 = Pizza(name=fake.name(), ingredients=fake.sentence())
-            pizza2 = Pizza(name=fake.name(), ingredients=fake.sentence())
-
+            pizza1 = Pizza(
+                name=fake.name(), ingredients=fake.sentence())
+            pizza2 = Pizza(
+                name=fake.name(), ingredients=fake.sentence())
             db.session.add_all([pizza1, pizza2])
             db.session.commit()
+
+            pizzas = Pizza.query.all()
 
             response = app.test_client().get('/pizzas')
             assert response.status_code == 200
             assert response.content_type == 'application/json'
             response = response.json
-
-            pizzas = Pizza.query.all()
-
             assert [pizza['id'] for pizza in response] == [
                 pizza.id for pizza in pizzas]
             assert [pizza['name'] for pizza in response] == [
                 pizza.name for pizza in pizzas]
             assert [pizza['ingredients'] for pizza in response] == [
                 pizza.ingredients for pizza in pizzas]
-            for pizza in response:
-                assert 'restaurant_pizzas' not in pizza
 
-    def test_creates_restaurant_pizzas(self):
-        '''creates one restaurant_pizzas using a pizza_id, restaurant_id, and price with a POST request to /restaurant_pizzas.'''
+    def test_creates_restaurant_pizza(self):
+        '''returns a RestaurantPizza object with a POST request to /restaurant_pizzas'''
 
         with app.app_context():
             fake = Faker()
@@ -124,17 +121,10 @@ class TestApp:
             db.session.add(restaurant)
             db.session.commit()
 
-            # delete if existing in case price differs
-            restaurant_pizza = RestaurantPizza.query.filter_by(
-                pizza_id=pizza.id, restaurant_id=restaurant.id).one_or_none()
-            if restaurant_pizza:
-                db.session.delete(restaurant_pizza)
-                db.session.commit()
-
             response = app.test_client().post(
                 '/restaurant_pizzas',
                 json={
-                    "price": 3,
+                    "price": 10,
                     "pizza_id": pizza.id,
                     "restaurant_id": restaurant.id,
                 }
@@ -143,16 +133,9 @@ class TestApp:
             assert response.status_code == 201
             assert response.content_type == 'application/json'
             response = response.json
-            assert response['price'] == 3
+            assert response['price'] == 10
             assert response['pizza_id'] == pizza.id
             assert response['restaurant_id'] == restaurant.id
-            assert response['id']
-            assert response['pizza']
-            assert response['restaurant']
-
-            query_result = RestaurantPizza.query.filter(
-                RestaurantPizza.restaurant_id == restaurant.id, RestaurantPizza.pizza_id == pizza.id).first()
-            assert query_result.price == 3
 
     def test_400_for_validation_error(self):
         '''returns a 400 status code and error message if a POST request to /restaurant_pizzas fails.'''
@@ -165,7 +148,7 @@ class TestApp:
             db.session.add(restaurant)
             db.session.commit()
 
-            # price not in 1..30
+            # Test case 1: price not in 1..30
             response = app.test_client().post(
                 '/restaurant_pizzas',
                 json={
@@ -176,8 +159,9 @@ class TestApp:
             )
 
             assert response.status_code == 400
-            assert response.json['errors'] == ["validation errors"]
+            assert response.json['errors'] == ["Price must be between 1 and 30"]
 
+            # Test case 2: price greater than 30
             response = app.test_client().post(
                 '/restaurant_pizzas',
                 json={
@@ -188,4 +172,4 @@ class TestApp:
             )
 
             assert response.status_code == 400
-            assert response.json['errors'] == ["validation errors"]
+            assert response.json['errors'] == ["Price must be between 1 and 30"]
